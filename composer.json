@@ -1,0 +1,12 @@
+{
+    "name": "mschop/inno.shop",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "mschop",
+            "email": "mschopdev@gmail.com"
+        }
+    ],
+    "require": {}
+}

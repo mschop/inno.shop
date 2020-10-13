@@ -1,0 +1,4 @@
+site_name: inno.shop
+theme: material
+nav:
+  - Welcome: 'index.md'

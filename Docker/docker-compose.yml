@@ -1,0 +1,44 @@
+version: "3"
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  postgresql:
+  composer_home:
+
+services:
+  nginx:
+    build:
+      context: ./nginx
+
+  cli:
+    build:
+      context: ./cli
+      args:
+        - USER_ID
+        - GROUP_ID
+    volumes:
+      - ../:/code
+    networks:
+      - default
+
+  fpm:
+    build:
+      context: ./fpm
+      args:
+        - USER_ID
+        - GROUP_ID
+    volumes:
+      - ../:/code
+    networks:
+      - default
+
+  postgresql:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"

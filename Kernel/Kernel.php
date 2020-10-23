@@ -3,10 +3,25 @@
 
 namespace InnoShop\Kernel;
 
-use InnoShop\Kernel\Commands\InstallCommand;
-use InnoShop\Plugins\Core\CorePlugin;
-use Psr\Log\LoggerInterface;
 use PDO;
+use Eloquent\Pathogen\Path;
+use Eloquent\Pathogen\RelativePath;
+use InnoShop\Kernel\Commands\InstallCommand;
+use InnoShop\Kernel\Db\DatabaseTruncate;
+use InnoShop\Kernel\Db\DatabaseTruncateInterface;
+use InnoShop\Kernel\Db\IsDatabaseEmptyCheck;
+use InnoShop\Kernel\Db\IsDatabaseEmptyCheckInterface;
+use InnoShop\Plugins\Core\CorePlugin;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+use NoTee\BlockManager;
+use NoTee\DefaultEscaper;
+use NoTee\NodeFactory;
+use NoTee\Template;
+use NoTee\TemplateInterface;
+use NoTee\UriValidator;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Slim\Factory\AppFactory;
 use Slim\Psr7\Request;
 use Symfony\Component\Console\Application;
@@ -17,24 +32,25 @@ use Symfony\Component\Console\Application;
  */
 final class Kernel
 {
-    private DatabaseConnectionData $databaseConnectionData;
-    private LoggerInterface $logger;
+    private array $config;
     private Container $container;
-    /** @var string[] */
-    private array $plugins = [
-        CorePlugin::class,
-    ];
+    /** @var AbstractPlugin[] */
+    private array $plugins = [];
 
-    public function __construct(DatabaseConnectionData $databaseConnectionData, LoggerInterface $logger)
+    public function __construct(array $config)
     {
-        $this->databaseConnectionData = $databaseConnectionData;
-        $this->logger = $logger;
+        $this->config = $config;
         $this->container = new Container();
+        $this->plugins[] = new CorePlugin($this->container);
     }
 
-    public function addPlugin(string $bootstrapClass): void
+    public function addPlugin(string $class): void
     {
-        $this->plugins[] = $bootstrapClass;
+        $plugin = new $class($this->container);
+        if (!$plugin instanceof AbstractPlugin) {
+            throw new \Exception("Class $class is not an instance of " . AbstractPlugin::class);
+        }
+        $this->plugins[] = $plugin;
     }
 
     public function handleRequest(Request $request = null)
@@ -43,7 +59,10 @@ final class Kernel
         AppFactory::setContainer($this->container);
         $app = AppFactory::create();
         $app->addRoutingMiddleware();
-        $app->addErrorMiddleware(true, true, true, $this->logger);
+        $app->addErrorMiddleware(true, true, true, $this->container->get(LoggerInterface::class));
+        foreach ($this->plugins as $plugin) {
+            $plugin->initializeWeb($app);
+        }
         $app->run($request);
     }
 
@@ -61,43 +80,80 @@ final class Kernel
     private function boot()
     {
         $this->setupContainer();
-        $this->loadPlugins();
-    }
-
-    private function loadPlugins()
-    {
-        foreach ($this->plugins as $plugin) {
-            new $plugin($this->container);
-        }
     }
 
     private function setupContainer(): void
     {
-        $this->container->registerSingleton('db_connection', function() {
-            $d = $this->databaseConnectionData;
-            $dsn = "pgsql:host={$d->getHost()};port={$d->getPort()}";
-            $pdo = new PDO($dsn, $d->getUser(), $d->getPass());
+        $this->container->add('config', fn() => $this->config);
+
+        $this->container->add(LoggerInterface::class, function(Container $c) {
+            $path = Path::fromString($c->get('config')['root'])->join(new RelativePath(['var', 'log', 'prod.log']));
+            $consoleHandler = new StreamHandler($path);
+            $logger = new Logger('inno.shop');
+            $logger->pushHandler($consoleHandler);
+            return $logger;
+        });
+
+        $this->container->add('db_connection', function() {
+            $c = $this->config['db'];
+            $dsn = "pgsql:host={$c['host']};port={$c['port']}";
+            $pdo = new PDO($dsn, $c['user'], $c['pass']);
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            $d->getPostInit()($pdo);
             return $pdo;
         });
 
-        $this->container->registerSingleton('plugins', function() {
-            return array_map(
-                fn(string $plugin) => new $plugin($this->container),
-                $this->plugins,
-            );
-        });
+        $this->container->add(ActionMethodFactory::class, fn(Container $c) => new ActionMethodFactory($c));
 
-        $this->container->registerSingleton(Migrator::class, fn(Container $c) => new Migrator(
+        $this->container->add(Migrator::class, fn(Container $c) => new Migrator(
             $c->get('db_connection'),
             $c->getByTag('migration'),
         ));
 
-        $this->container->registerSingleton(
+        $this->container->add(IsDatabaseEmptyCheckInterface::class, fn(Container $c) => new IsDatabaseEmptyCheck(
+            $c->get('db_connection'),
+        ));
+
+        $this->container->add(DatabaseTruncateInterface::class, fn(Container $c) => new DatabaseTruncate(
+            $c->get('db_connection'),
+        ));
+
+        $this->container->add(LoggerInterface::class, fn() => new NullLogger()); // TODO create real logger
+
+        $this->container->add(
             InstallCommand::class,
-            fn(Container $c) => new InstallCommand($c->get(Migrator::class)),
+            fn(Container $c) => new InstallCommand(
+                $c->get(Migrator::class),
+                $c->get(IsDatabaseEmptyCheckInterface::class),
+                $c->get(DatabaseTruncateInterface::class),
+            ),
             ['cli_command'],
         );
+
+        $this->container->add(TemplateInterface::class, function (Container $c): TemplateInterface {
+            global $noTee;
+
+            $noTee = new NodeFactory(
+                new DefaultEscaper('utf-8'),
+                new UriValidator(),
+                new BlockManager(),
+                true //todo
+            );
+
+            require __DIR__ . '/../vendor/mschop/notee/global.php';
+
+            $template = new Template(
+                array_reduce(
+                    $this->plugins,
+                    fn (array $carry, AbstractPlugin $item) => array_merge($carry, $item->getTemplateDirs()),
+                    []
+                ),
+                $noTee
+            );
+            $noTee->setTemplate($template);
+
+            return $template;
+        });
+
+
     }
 }

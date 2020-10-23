@@ -12,6 +12,10 @@ services:
   nginx:
     build:
       context: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../:/code
 
   cli:
     build:

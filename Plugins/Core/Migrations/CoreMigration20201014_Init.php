@@ -33,8 +33,23 @@ class CoreMigration20201014_Init implements MigrationInterface
     function migrate(): void
     {
         $this->conn->exec("
-            CREATE TABLE test (
-                id INT PRIMARY KEY
+            CREATE TABLE jtl_connector_session (
+                id VARCHAR PRIMARY KEY,
+                timestamp TIMESTAMP,
+                data TEXT               
+            );
+
+            CREATE TABLE product (
+                id INT PRIMARY KEY,
+                data JSONB NOT NULL
+            );
+            CREATE TABLE category (
+                id INT PRIMARY KEY,
+                data JSONB NOT NULL
+            );
+            CREATE TABLE manufacturer (
+                id INT PRIMARY KEY,
+                data JSONB NOT NULL
             );
         ");
     }

@@ -2,22 +2,24 @@
 
 namespace InnoShopExample;
 
-use InnoShop\Kernel\DatabaseConnectionData;
 use InnoShop\Kernel\Kernel;
-use Monolog\Handler\StreamHandler;
-use Monolog\Logger;
+use InnoShop\Plugins\Core\CorePlugin;
 
 require __DIR__ . '/../vendor/autoload.php';
 
 function getKernel(): Kernel
 {
-    $consoleHandler = new StreamHandler('php://stdout');
-    $logger = new Logger('inno.shop');
-    $logger->pushHandler($consoleHandler);
-    $kernel = new Kernel(
-        new DatabaseConnectionData('postgresql', 'postgres', 'postgres'),
-        $logger
-    );
-    return $kernel;
+    return new Kernel([
+        'root' => __DIR__,
+        'db' => [
+            'host' => 'postgresql',
+            'port' => 5432,
+            'user' => 'postgres',
+            'pass' => 'postgres',
+        ],
+        'jtl_connector' => [
+            'token' => 'testtoken',
+        ],
+    ]);
 }
 

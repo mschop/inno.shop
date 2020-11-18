@@ -3,6 +3,9 @@
 
 namespace InnoShop\Kernel;
 
+use Eloquent\Pathogen\PathInterface;
+use NoTee\NoTee;
+use NoTee\NoTeeInterface;
 use PDO;
 use Eloquent\Pathogen\Path;
 use Eloquent\Pathogen\RelativePath;
@@ -14,17 +17,11 @@ use InnoShop\Kernel\Db\IsDatabaseEmptyCheckInterface;
 use InnoShop\Plugins\Core\CorePlugin;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
-use NoTee\BlockManager;
-use NoTee\DefaultEscaper;
-use NoTee\NodeFactory;
-use NoTee\Template;
-use NoTee\TemplateInterface;
-use NoTee\UriValidator;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Slim\Factory\AppFactory;
 use Slim\Psr7\Request;
 use Symfony\Component\Console\Application;
+
 
 /**
  * Class Container
@@ -86,9 +83,15 @@ final class Kernel
     {
         $this->container->add('config', fn() => $this->config);
 
+        $this->container->add('path_root', fn(Container $c) => Path::fromString($c->get('config')['root']));
+        $this->container->add('path_var', fn(Container $c) => $c->get('path_root')->joinAtoms('var'));
+
         $this->container->add(LoggerInterface::class, function(Container $c) {
-            $path = Path::fromString($c->get('config')['root'])->join(new RelativePath(['var', 'log', 'prod.log']));
-            $consoleHandler = new StreamHandler($path);
+            $logLevel = $c->get('config')['log_level'] ?? Logger::ERROR;
+            $path = $c->get('path_var');
+            assert($path instanceof PathInterface);
+            $path = $path->join(new RelativePath(['log', date('Y-m-d') . '.log']));
+            $consoleHandler = new StreamHandler((string)$path, $logLevel);
             $logger = new Logger('inno.shop');
             $logger->pushHandler($consoleHandler);
             return $logger;
@@ -117,8 +120,6 @@ final class Kernel
             $c->get('db_connection'),
         ));
 
-        $this->container->add(LoggerInterface::class, fn() => new NullLogger()); // TODO create real logger
-
         $this->container->add(
             InstallCommand::class,
             fn(Container $c) => new InstallCommand(
@@ -129,31 +130,16 @@ final class Kernel
             ['cli_command'],
         );
 
-        $this->container->add(TemplateInterface::class, function (Container $c): TemplateInterface {
-            global $noTee;
-
-            $noTee = new NodeFactory(
-                new DefaultEscaper('utf-8'),
-                new UriValidator(),
-                new BlockManager(),
-                true //todo
+        $this->container->add(NoTeeInterface::class, function (Container $c): NoTeeInterface {
+            $templateDirs = array_reduce(
+                $this->plugins,
+                fn (array $carry, AbstractPlugin $item) => array_merge($carry, $item->getTemplateDirs()),
+                [],
             );
+            $noTee = NoTee::create('utf-8', $templateDirs, [], false);
+            $noTee->enableGlobal();
 
-            require __DIR__ . '/../vendor/mschop/notee/global.php';
-
-            $template = new Template(
-                array_reduce(
-                    $this->plugins,
-                    fn (array $carry, AbstractPlugin $item) => array_merge($carry, $item->getTemplateDirs()),
-                    []
-                ),
-                $noTee
-            );
-            $noTee->setTemplate($template);
-
-            return $template;
+            return $noTee;
         });
-
-
     }
 }

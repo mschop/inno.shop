@@ -22,9 +22,8 @@ use Jtl\Connector\Core\Authentication\TokenValidatorInterface;
 use Jtl\Connector\Core\Connector\ConnectorInterface;
 use Jtl\Connector\Core\Mapper\PrimaryKeyMapperInterface;
 use Jtl\Connector\Core\Session\SessionHandlerInterface;
-use NoTee\TemplateInterface;
+use NoTee\NoTeeInterface;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Slim\App;
 
 class CorePlugin extends AbstractPlugin
@@ -56,6 +55,10 @@ class CorePlugin extends AbstractPlugin
 
     private function registerServices(): void
     {
+        $this->container->add(
+            'jtl_connector_root',
+            fn(Container $c) => Path::fromString($c->get('config')['root'])->joinAtoms('jtl_connector'),
+        );
         $this->container->add(PrimaryKeyMapperInterface::class, fn() => new PrimaryKeyMapper());
         $this->container->add(ConnectorInterface::class, fn(Container $c) => new Connector(
             $c->get(PrimaryKeyMapperInterface::class),
@@ -68,17 +71,18 @@ class CorePlugin extends AbstractPlugin
             $c->get(PreparerInterface::class)->prepare();
             $application = new Application(
                 $c->get(ConnectorInterface::class),
-                $c->get('config')['jtl_connector']['path'],
+                $c->get('jtl_connector_root'),
             );
-            $application->setSessionHandler(new SessionHandler($c->get('db_connection')));
+            $application->setSessionHandler($c->get(SessionHandlerInterface::class));
             return $application;
         });
         $this->container->add(PreparerInterface::class, fn(Container $c) => new Preparer(
-            Path::fromString($c->get('config')['root']),
+            $c->get('jtl_connector_root'),
             $c->get(LoggerInterface::class),
         ));
         $this->container->add(SessionHandlerInterface::class, fn(Container $c) => new SessionHandler(
             $c->get('db_connection'),
+            $c->get(LoggerInterface::class),
         ));
     }
 
@@ -86,7 +90,7 @@ class CorePlugin extends AbstractPlugin
     {
         $this->container->add(
             IndexAction::class,
-            fn(Container $c) => new IndexAction($c->get(TemplateInterface::class)),
+            fn(Container $c) => new IndexAction($c->get(NoTeeInterface::class)),
         );
         $this->container->add(
             JtlConnectorAction::class,

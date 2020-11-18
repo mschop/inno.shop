@@ -27,7 +27,7 @@ class CoreMigration20201014_Init implements MigrationInterface
 
     function getDescription(): string
     {
-        return 'Installes a test table';
+        return 'Creates connector base tables';
     }
 
     function migrate(): void

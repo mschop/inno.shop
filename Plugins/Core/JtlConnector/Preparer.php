@@ -17,9 +17,9 @@ class Preparer implements PreparerInterface
     protected PathInterface $path;
     protected LoggerInterface $logger;
 
-    function __construct(PathInterface $path, LoggerInterface $logger)
+    function __construct(PathInterface $jtlConnectorDir, LoggerInterface $logger)
     {
-        $this->path = $path->joinAtoms('jtl_connector');
+        $this->path = $jtlConnectorDir;
         $this->logger = $logger;
     }
 

@@ -4,6 +4,7 @@ namespace InnoShopExample;
 
 use InnoShop\Kernel\Kernel;
 use InnoShop\Plugins\Core\CorePlugin;
+use Monolog\Logger;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -20,6 +21,7 @@ function getKernel(): Kernel
         'jtl_connector' => [
             'token' => 'testtoken',
         ],
+        'log_level' => Logger::DEBUG
     ]);
 }
 

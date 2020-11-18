@@ -5,22 +5,23 @@ namespace InnoShop\Plugins\Core\Actions;
 
 
 use InnoShop\Kernel\ActionInterface;
-use NoTee\TemplateInterface;
+use NoTee\NoTee;
+use NoTee\NoTeeInterface;
 use Slim\Psr7\Request;
 use Slim\Psr7\Response;
 
 class IndexAction implements ActionInterface
 {
-    protected TemplateInterface $template;
+    protected NoTeeInterface $noTee;
 
-    public function __construct(TemplateInterface $template)
+    public function __construct(NoTee $noTee)
     {
-        $this->template = $template;
+        $this->noTee = $noTee;
     }
 
     function handle(Request $request, Response $response): Response
     {
-        $dom = $this->template->render('index.html.php', [
+        $dom = $this->noTee->render('index.html.php', [
             'products' => [
                 'Lacoste Shirt XL Blau',
                 'Dracul Mode Hose M',
